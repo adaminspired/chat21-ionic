@@ -1,5 +1,10 @@
 import { Component, OnInit, Output, EventEmitter } from '@angular/core';
 import { IonTextarea } from '@ionic/angular';
+import { Chooser } from '@ionic-native/chooser/ngx';
+import { ModalController } from '@ionic/angular';
+
+// pages
+import { LoaderPreviewPage } from 'src/app/pages/loader-preview/loader-preview.page';
 // utils
 import { TYPE_MSG_TEXT } from 'src/app/utils/constants';
 
@@ -9,7 +14,7 @@ import { TYPE_MSG_TEXT } from 'src/app/utils/constants';
   styleUrls: ['./message-text-area.component.scss'],
 })
 export class MessageTextAreaComponent implements OnInit {
-  @Output() eventChangeTextArea = new EventEmitter<IonTextarea>();
+  @Output() eventChangeTextArea = new EventEmitter<object>();
   @Output() eventSendMessage = new EventEmitter<object>();
 
   public conversationEnabled = false;
@@ -18,23 +23,26 @@ export class MessageTextAreaComponent implements OnInit {
   TYPE_MSG_TEXT = TYPE_MSG_TEXT;
 
   constructor(
+    public chooser: Chooser,
+    public modalController: ModalController,
   ) { }
 
   ngOnInit() {
   }
 
   onChange(e: any) {
-    console.log('onChange ************** event:: ', e.detail.value);
-
-    const lastChar = e.target.textContent.substr(-1);
-    const codeChar = lastChar.charCodeAt(0);
-    // console.log('lastChar', lastChar.charCodeAt(0));
+    const codeChar = e.detail.data;
+    let message = e.detail.target.innerHTML;
+    if (e.detail.data) {
+      message += e.detail.data;
+    }
+    const height = e.detail.target.offsetHeight;
+    console.log('onChange ************** event:: ', message);
     if ( codeChar === 10 ) {
       console.log('premuto invio ');
     } else {
       try {
-        const text = e.target.textContent.trim();
-        if ( text.length > 0 ) {
+        if ( message.trim().length > 0 ) {
           this.conversationEnabled = true;
         } else {
           this.conversationEnabled = false;
@@ -42,7 +50,7 @@ export class MessageTextAreaComponent implements OnInit {
       } catch (err) {
         this.conversationEnabled = false;
       }
-      this.eventChangeTextArea.emit(e);
+      this.eventChangeTextArea.emit({ msg: message, offsetHeight: height } );
     }
   }
 
@@ -106,9 +114,62 @@ export class MessageTextAreaComponent implements OnInit {
     }
   }
 
-  /** */
-  controlOfMessage(messageString: string) {
-
+  /** su mobile !!!*/
+  onFileSelectedMobile(e: any) {
+    console.log('controlOfMessage');
+    this.chooser.getFile()
+    .then(file => {
+      console.log(file ? file.name : 'canceled');
+    })
+    .catch((error: any) => {
+      console.error(error);
+    });
   }
 
+  onFileSelected(e: any){
+    console.log('controlOfMessage', e);
+    this.presentModal(e);
+  }
+
+
+
+
+
+
+  private async presentModal(e: any): Promise<any> {
+    console.log('presentModal', e);
+    console.log('presentModal', e.target);
+    console.log('presentModal', e.target.files);
+    console.log('presentModal', e.target.files.length);
+    const dataFiles = e.target.files;
+    const attributes = { files: dataFiles, enableBackdropDismiss: false };
+    const modal: HTMLIonModalElement =
+       await this.modalController.create({
+          component: LoaderPreviewPage,
+          componentProps: attributes,
+          swipeToClose: false,
+          backdropDismiss: true
+    });
+    modal.onDidDismiss().then((detail: any) => {
+      console.log('The result: CHIUDI!!!!!', detail.data);
+      if (detail !== null) {
+       //  console.log('The result: CHIUDI!!!!!', detail.data);
+      }
+   });
+    // await modal.present();
+    // modal.onDidDismiss().then((detail: any) => {
+    //    console.log('The result: CHIUDI!!!!!', detail.data);
+    //   //  this.checkPlatform();
+    //    if (detail !== null) {
+    //     //  console.log('The result: CHIUDI!!!!!', detail.data);
+    //    }
+    // });
+    return await modal.present();
+  }
+
+  private async closeModal() {
+    console.log('closeModal', this.modalController);
+    await this.modalController.getTop();
+    this.modalController.dismiss({ confirmed: true });
+  }
 }

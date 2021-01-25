@@ -1,120 +1,85 @@
 import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
 // import 'rxjs/add/operator/map';
 
 // models
 import { UserModel } from '../models/user';
 
 // handlers
-import { ChatConversationHandler } from './chat-conversation-handler';
+// import { ChatConversationHandler } from './chat-conversation-handler';
 // import { ChatConversationsHandler } from './chat-conversations-handler';
-import { ConversationsHandlerService } from 'src/app/services/conversations-handler.service';
-import { ChatArchivedConversationsHandler } from './chat-archived-conversations-handler';
+
+import { ConversationHandlerService } from 'src/app/services/abstract/conversation-handler.service';
+import { ConversationsHandlerService } from 'src/app/services/abstract/conversations-handler.service';
+// import { ChatArchivedConversationsHandler } from './chat-archived-conversations-handler';
 import { ChatContactsSynchronizer } from './chat-contacts-synchronizer';
 import { environment } from '../../environments/environment';
 
 
-
-// services
-import { EventsService } from './events-service';
-// import { UserService } from './user.service';
-import { CurrentUserService } from './current-user/current-user.service';
-
-// utils
-import { avatarPlaceholder, getColorBck, getImageUrlThumbFromFirebasestorage } from '../utils/utils';
-
 @Injectable({ providedIn: 'root' })
 
 export class ChatManager {
-  private tenant: string;
-  public handlers: ChatConversationHandler[];
-  private loggedUser: UserModel;
-  // public conversationsHandler: ChatConversationsHandler;
-  public archivedConversationsHandler: ChatArchivedConversationsHandler;
+
+  BSStart: BehaviorSubject<any> = new BehaviorSubject<any>(null);
+
+  supportMode = environment.supportMode;
+  tenant = environment.tenant;
+
+  private currentUser: UserModel;
+  private tiledeskToken: string;
+
+  private handlers: ConversationHandlerService[];
+  // public archivedConversationsHandler: ChatArchivedConversationsHandler;
   public contactsSynchronizer: ChatContactsSynchronizer;
   public openInfoConversation: boolean;
-  supportMode = environment['supportMode'];
 
   constructor(
     public chatContactsSynchronizer: ChatContactsSynchronizer,
-    private events: EventsService,
-    // public userService: UserService,
-    public currentUserService: CurrentUserService,
     public conversationsHandlerService: ConversationsHandlerService
   ) { }
   /**
    * inizializza chatmanager
    */
   initialize() {
-    this.tenant = environment.tenant;
     this.handlers = [];
     this.openInfoConversation = true;
+    this.currentUser = null;
     console.log('************* init chat manager ***', this.handlers);
-    this.configureWithAppId();
-  }
-  /**
-   * ritorna istanza di chatmanager
-   */
-  getInstance() {
-    return this;
   }
 
   /**
-   * configura App: chiamato da app.component
-   * setto tenant
-   * setto loggedUser
+   * setTiledeskToken
    */
-  configureWithAppId() {
-    this.loggedUser = null;
-    this.handlers = [];
+  public setTiledeskToken(tiledeskToken: string) {
+    this.tiledeskToken = tiledeskToken;
   }
 
   /**
-   * return tenant
+   * return tiledeskToken
    */
-  getTenant(): string {
-    return this.tenant;
+  public getTiledeskToken(): string {
+    console.log('this.tiledeskToken: ', this.tiledeskToken );
+    return this.tiledeskToken;
+  }
+
+  /**
+   * setCurrentUser
+   */
+  public setCurrentUser(currentUser: UserModel) {
+    this.currentUser = currentUser;
   }
 
   /**
    * return current user detail
    */
-  getLoggedUser(): UserModel {
-    console.log('getLoggedUser: ', this.loggedUser );
-    return this.loggedUser;
+  public getCurrentUser(): UserModel {
+    console.log('currentUser: ', this.currentUser );
+    return this.currentUser;
   }
 
-  /**
-   *
-   * @param user
-   */
-  completeProfile(user: any) {
-    if (!user || !user.uid) {
-      return;
-    }
-    try {
-      const uid = user.uid;
-      // this.loggedUser = new UserModel(uid);
-      const firstname = user.firstname ? user.firstname : '';
-      const lastname = user.lastname ? user.lastname : '';
-      const email = user.email ? user.email : '';
-      const fullname = ( firstname + ' ' + lastname ).trim();
-      const avatar = avatarPlaceholder(fullname);
-      const color = getColorBck(fullname);
-      const imageurl = getImageUrlThumbFromFirebasestorage(uid);
-      this.loggedUser.email = email;
-      this.loggedUser.firstname = firstname;
-      this.loggedUser.lastname = lastname;
-      this.loggedUser.fullname = fullname;
-      this.loggedUser.imageurl = imageurl;
-      this.loggedUser.avatar = avatar;
-      this.loggedUser.color = color;
-      this.loggedUser.online = true;
-      console.log('******************* setLoggedUser::: ', this.loggedUser);
-    } catch (err) {
-      console.log(err);
-    }
+  public startApp() {
+    this.BSStart.next(this.currentUser);
   }
-
   /**
    *
    */
@@ -129,11 +94,11 @@ export class ChatManager {
    */
   dispose() {
     console.log(' 1 - setOffAllReferences');
-    if(this.handlers) { this.setOffAllReferences(); }
+    if (this.handlers) { this.setOffAllReferences(); }
     console.log(' 2 - disposeConversationsHandler');
     if (this.conversationsHandlerService) { this.disposeConversationsHandler(); }
     console.log(' 3 - disposeArchivedConversationsHandler');
-    if (this.archivedConversationsHandler) { this.disposeConversationsHandler(); }
+    // if (this.archivedConversationsHandler) { this.disposeConversationsHandler(); }
     console.log(' 4 - disposeContactsSynchronizer');
     if (this.contactsSynchronizer) { this.disposeContactsSynchronizer(); }
     console.log(' OKK ');
@@ -148,23 +113,18 @@ export class ChatManager {
    * 2 - aggiungo il token
    * 3 - pubblico stato loggedUser come login
    */
-  goOnLine(user) {
-    if (user) {
-      const uid = user.uid;
-      this.loggedUser = new UserModel(uid);
-      console.log('goOnLine::: ', this.loggedUser);
-      this.loadCurrentUserDetail();
-      if (this.supportMode === false) {
-        //this.initContactsSynchronizer();
-      }
-    }
-  }
+  // goOnLine(user) {
+  //   if (user) {
+  //     const uid = user.uid;
+  //     this.loggedUser = new UserModel(uid);
+  //     console.log('goOnLine::: ', this.loggedUser);
+  //     this.loadCurrentUserDetail();
+  //     if (this.supportMode === false) {
+  //       //this.initContactsSynchronizer();
+  //     }
+  //   }
+  // }
 
-
-  loadCurrentUserDetail() {
-    const that = this;
-    this.currentUserService.detailCurrentUser();
-  }
 
   
 
@@ -190,7 +150,8 @@ export class ChatManager {
    * 2 - pubblico stato loggedUser come logout
    */
   goOffLine() {
-    this.loggedUser = null;
+    this.currentUser = null;
+    // cancello token e user dal localstorage!!!!!
     console.log(' 1 - CANCELLO TUTTE LE REFERENCES DI FIREBASE');
     this.dispose();
   }
@@ -201,15 +162,15 @@ export class ChatManager {
    * chiamato dall'inizialize di dettaglio-conversazione.ts
    * @param handler
    */
-  addConversationHandler(handler) {
-    console.log('CHAT MANAGER -----> addConversationHandler', handler);
+  addConversationHandler(handler: ConversationHandlerService) {
+    console.log('CHAT MANAGER -----> addConversationHandler', this.handlers, handler);
     this.handlers.push(handler);
   }
 
   /**
    * rimuovo dall'array degli handlers delle conversazioni una conversazione
    * al momento non è utilizzato!!!
-   * @param conversationId 
+   * @param conversationId
    */
   removeConversationHandler(conversationId) {
     console.log(' -----> removeConversationHandler: ', conversationId);
@@ -224,15 +185,26 @@ export class ChatManager {
    * @param conversationId
    */
   getConversationHandlerByConversationId(conversationId): any {
-    const resultArray = this.handlers.filter((handler) => {
-      console.log('FILTRO::: ***', conversationId, handler.conversationWith);
-      return handler.conversationWith === conversationId;
+    let handler = null;
+    this.handlers.forEach(conv => {
+      // console.log('forEach ***', conversationId, this.handlers, conv);
+      if (conv.conversationWith === conversationId) {
+        console.log('OKKKKKK', conversationId, conv.conversationWith);
+        handler = conv;
+        return;
+      }
     });
-    console.log('getConversationHandlerByConversationId ***', conversationId, resultArray, this.handlers);
-    if (resultArray.length === 0) {
-      return null;
-    }
-    return resultArray[0];
+    return handler;
+    // const resultArray = this.handlers.filter((handler) => {
+    //   console.log('FILTRO::: ***', conversationId, handler.conversationWith);
+    //   return handler.conversationWith === conversationId;
+    // });
+
+   
+    // if (resultArray.length === 0) {
+    //   return null;
+    // }
+    // return resultArray[0];
   }
 
   /**
@@ -241,8 +213,8 @@ export class ChatManager {
    */
   setOffAllReferences() {
     this.handlers.forEach((data) => {
-      const item = data.ref;
-      item.ref.off();
+      // const item = data.ref;
+      // item.ref.off();
     });
     this.handlers = [];
   }
@@ -271,9 +243,9 @@ export class ChatManager {
    * inizio la sincronizzazione
    */
   initContactsSynchronizer() {
-    console.log(' initContactsSynchronizer:: ', this.contactsSynchronizer, this.tenant, this.loggedUser);
+    console.log(' initContactsSynchronizer:: ', this.contactsSynchronizer, this.tenant, this.currentUser);
     if (!this.contactsSynchronizer) {
-      this.contactsSynchronizer = this.chatContactsSynchronizer.initWithTenant(this.tenant, this.loggedUser);
+      this.contactsSynchronizer = this.chatContactsSynchronizer.initWithTenant(this.tenant, this.currentUser);
       //this.contactsSynchronizer = this.createContactsSynchronizerForUser();
       this.contactsSynchronizer.startSynchro();
     } else {

@@ -10,9 +10,10 @@ import 'firebase/firestore';
 // models
 import { MessageModel } from 'src/app/models/message';
 import { UserModel } from 'src/app/models/user';
+import { ConversationModel } from 'src/app/models/conversation';
 
 // services
-import { ConversationHandlerService } from 'src/app/services/conversation-handler.service';
+import { ConversationHandlerService } from 'src/app/services/abstract/conversation-handler.service';
 
 // utils
 import { MSG_STATUS_RECEIVED, CHAT_REOPENED, CHAT_CLOSED, MEMBER_JOINED_GROUP, TYPE_DIRECT } from 'src/app/utils/constants';
@@ -25,6 +26,7 @@ import {
 } from 'src/app/utils/utils';
 
 
+
 @Injectable({ providedIn: 'root' })
 export class FirebaseConversationHandler extends ConversationHandlerService {
 
@@ -32,11 +34,13 @@ export class FirebaseConversationHandler extends ConversationHandlerService {
     messageAdded: BehaviorSubject<MessageModel>;
     messageChanged: BehaviorSubject<MessageModel>;
     messageRemoved: BehaviorSubject<string>;
-    isTypings: BehaviorSubject<any> = new BehaviorSubject<any>(null);
+    isTyping: BehaviorSubject<any> = new BehaviorSubject<any>(null);
 
     // public variables
     public attributes: any;
     public messages: MessageModel[];
+    public conversationWith: string;
+
 
     // private variables
     private translationMap: Map<string, string>; // LABEL_TODAY, LABEL_TOMORROW
@@ -46,11 +50,10 @@ export class FirebaseConversationHandler extends ConversationHandlerService {
     private tenant: string;
     private loggedUser: UserModel;
     private senderId: string;
-    private conversationWith: string;
-    private ref: firebase.database.Query;
     private listSubsriptions: any[];
     private CLIENT_BROWSER: string;
     private lastDate = '';
+    private ref: firebase.database.Query;
 
 
     constructor(
@@ -68,7 +71,9 @@ export class FirebaseConversationHandler extends ConversationHandlerService {
         tenant: string,
         translationMap: Map<string, string>
     ) {
-        console.log('initWithRecipient:::', tenant);
+        console.log('initWithRecipient::: FirebaseConversationHandler',
+        recipientId, recipientFullName, loggedUser, tenant, translationMap
+        );
         this.recipientId = recipientId;
         this.recipientFullname = recipientFullName;
         this.loggedUser = loggedUser;
@@ -112,6 +117,7 @@ export class FirebaseConversationHandler extends ConversationHandlerService {
         });
     }
 
+
     /**
      * bonifico url in testo messaggio
      * recupero time attuale
@@ -127,7 +133,7 @@ export class FirebaseConversationHandler extends ConversationHandlerService {
         typeMsg: string,
         metadataMsg: string,
         conversationWith: string,
-        conversationWithDetailFullname: string,
+        conversationWithFullname: string,
         senderMsg: string,
         senderFullname: string,
         channelType: string
@@ -140,7 +146,7 @@ export class FirebaseConversationHandler extends ConversationHandlerService {
 
         // const key = messageRef.key;
         const lang = document.documentElement.lang;
-        const recipientFullname = conversationWithDetailFullname;
+        const recipientFullname = conversationWithFullname;
         const dateSendingMessage = setHeaderDate(this.translationMap, '');
 
         const messageRef = firebaseMessagesCustomUid.push({
@@ -200,7 +206,7 @@ export class FirebaseConversationHandler extends ConversationHandlerService {
      * dispose reference della conversazione
      */
     dispose() {
-        this.ref.off();
+        // this.ref.off();
     }
 
 
@@ -209,17 +215,24 @@ export class FirebaseConversationHandler extends ConversationHandlerService {
     // ---------------------------------------------------------- //
     /** */
     private setAttributes(): any {
-        let attributes: any = JSON.parse(sessionStorage.getItem('attributes'));
-        if (!attributes || attributes === 'undefined') {
-            attributes = {
-                client: this.CLIENT_BROWSER,
-                sourcePage: location.href,
-                userEmail: this.loggedUser.email,
-                userFullname: this.loggedUser.fullname
-            };
-            console.log('>>>>>>>>>>>>>> setAttributes: ', JSON.stringify(attributes));
-            sessionStorage.setItem('attributes', JSON.stringify(attributes));
-        }
+        const attributes = {
+            client: this.CLIENT_BROWSER,
+            sourcePage: location.href,
+            userEmail: this.loggedUser.email,
+            userFullname: this.loggedUser.fullname
+        };
+
+        // let attributes: any = JSON.parse(sessionStorage.getItem('attributes'));
+        // if (!attributes || attributes === 'undefined') {
+        //     attributes = {
+        //         client: this.CLIENT_BROWSER,
+        //         sourcePage: location.href,
+        //         userEmail: this.loggedUser.email,
+        //         userFullname: this.loggedUser.fullname
+        //     };
+        //     console.log('>>>>>>>>>>>>>> setAttributes: ', JSON.stringify(attributes));
+        //     sessionStorage.setItem('attributes', JSON.stringify(attributes));
+        // }
         return attributes;
     }
 
@@ -233,7 +246,7 @@ export class FirebaseConversationHandler extends ConversationHandlerService {
             this.lastDate = headerDate;
             msg.headerDate = headerDate;
         }
-        console.log('>>>>>>>>>>>>>> added headerDate: ', msg);
+        // console.log('>>>>>>>>>>>>>> added headerDate: ', msg);
         this.addRepalceMessageInArray(childSnapshot.key, msg);
         // this.messageAdded.next(msg);
         this.messageAdded.next(msg);
@@ -243,7 +256,7 @@ export class FirebaseConversationHandler extends ConversationHandlerService {
     private changed(childSnapshot: any) {
         const msg = this.messageGenerate(childSnapshot);
         // imposto il giorno del messaggio per visualizzare o nascondere l'header data
-        console.log('>>>>>>>>>>>>>> changed headerDate: ', msg);
+        // con**** DATAIL messageAdded ***sole.log('>>>>>>>>>>>>>> changed headerDate: ', msg);
         this.addRepalceMessageInArray(childSnapshot.key, msg);
         this.messageChanged.next(msg);
     }
@@ -268,7 +281,7 @@ export class FirebaseConversationHandler extends ConversationHandlerService {
         }
         // bonifico messaggio da url
         if (msg.type === 'text') {
-            msg.text = htmlEntities(msg.text);
+            // msg.text = htmlEntities(msg.text);
         }
         // verifico che il sender è il logged user
         msg.isSender = this.isSender(msg.sender, this.loggedUser.uid);
@@ -277,6 +290,10 @@ export class FirebaseConversationHandler extends ConversationHandlerService {
             if (msg.attributes.subtype === 'info' || msg.attributes.subtype === 'info/support') {
                 this.translateInfoSupportMessages(msg);
             }
+        }
+        if (msg.attributes && msg.attributes.projectId) {
+            this.attributes.projectId = msg.attributes.projectId;
+            // sessionStorage.setItem('attributes', JSON.stringify(attributes));
         }
         return msg;
     }

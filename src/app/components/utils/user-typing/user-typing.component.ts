@@ -1,11 +1,7 @@
 import { Component, OnInit, OnDestroy, Input } from '@angular/core';
 
 // services
-import { TypingService } from 'src/app/services/typing.service';
-import { EventsService } from 'src/app/services/events-service';
-
-// utils
-import { isInArray } from 'src/app/utils/utils';
+import { TypingService } from 'src/app/services/abstract/typing.service';
 
 @Component({
   selector: 'app-user-typing',
@@ -15,31 +11,33 @@ import { isInArray } from 'src/app/utils/utils';
 export class UserTypingComponent implements OnInit, OnDestroy {
 
   @Input() idConversation: string;
-  @Input() idUser: string;
+  @Input() idCurrentUser: string;
+  @Input() isDirect: boolean;
   @Input() translationMap: Map<string, string>;
   @Input() color: string;
   @Input() membersConversation: [string];
 
   public status = '';
-  private subscriptions = [];
-  public isTypings = false;
+  public isTyping = false;
   public nameUserTypingNow: string;
 
   private setTimeoutWritingMessages: any;
+  private subscriptions = [];
 
   constructor(
-    public typingService: TypingService,
-    public events: EventsService
+    public typingService: TypingService
   ) { }
 
+  /** */
   ngOnInit() {
+    console.log('UserTypingComponent - ngOnInit');
     this.initialize();
   }
 
   /** */
   ngOnDestroy() {
-    console.log('UserPresenceComponent - ngOnDestroy');
-    this.unsubescribeAll();
+    console.log('UserTypingComponent - ngOnDestroy');
+    // this.unsubescribeAll();
   }
 
   /** */
@@ -48,46 +46,62 @@ export class UserTypingComponent implements OnInit, OnDestroy {
     console.log('this.translationMap', this.translationMap);
     console.log('this.status', this.status);
     this.setSubscriptions();
-    this.typingService.isTyping(this.idConversation, this.idUser);
-  }
-
-
-   /** */
-  private unsubescribeAll() {
-    console.log('unsubescribeAll: ', this.subscriptions);
-    this.subscriptions.forEach((subscription: any) => {
-      console.log('unsubescribe: ', subscription);
-      this.events.unsubscribe(subscription, null);
-    });
-    this.subscriptions = [];
+    this.typingService.isTyping(this.idConversation, this.idCurrentUser, this.isDirect);
   }
 
   /** */
   private setSubscriptions() {
-    const key = 'isTypings';
-    if (!isInArray(key, this.subscriptions)) {
-      this.subscriptions.push(key);
-      this.events.subscribe(key, this.subscribeTypings);
+    const that = this;
+    const conversationSelected = this.subscriptions.find(item => item.key === this.idConversation);
+    if (!conversationSelected) {
+      const subscribeBSIsTyping =  this.typingService.BSIsTyping.subscribe((data: any) => {
+        console.log('***** BSIsTyping *****', data);
+        if (data) {
+          const isTypingUid = data.uid;
+          if (this.idConversation === isTypingUid) {
+            that.subscribeTypings(data);
+          }
+        }
+      });
+      const subscribe = {key: this.idConversation, value: subscribeBSIsTyping };
+      this.subscriptions.push(subscribe);
     }
   }
 
-  /**
-   */
-  subscribeTypings = (childSnapshot: any) => {
+  /** */
+  subscribeTypings(data: any) {
     const that = this;
-    console.log('subscribeTypings childSnapshot', childSnapshot);
-    const userTyping = this.membersConversation.includes(childSnapshot.key);
-    if ( !userTyping ) {
-      this.isTypings = true;
-      this.nameUserTypingNow = childSnapshot.name;
-      console.log('child_changed key', childSnapshot.key);
-      console.log('child_changed val', childSnapshot.val());
-      console.log('child_changed name', childSnapshot.name);
-      clearTimeout(this.setTimeoutWritingMessages);
-      this.setTimeoutWritingMessages = setTimeout(() => {
-          that.isTypings = false;
-      }, 2000);
+    try {
+      const key = data.uid;
+      this.nameUserTypingNow = null;
+      if (data.nameUserTypingNow) {
+        this.nameUserTypingNow = data.nameUserTypingNow;
+      }
+      console.log('subscribeTypings data:', data.uid);
+      const userTyping = this.membersConversation.includes(key);
+      if ( !userTyping ) {
+        this.isTyping = true;
+        console.log('child_changed key', key);
+        console.log('child_changed name', this.nameUserTypingNow);
+        clearTimeout(this.setTimeoutWritingMessages);
+        this.setTimeoutWritingMessages = setTimeout(() => {
+            that.isTyping = false;
+        }, 2000);
+      }
+    } catch (error) {
+      console.log('error: ', error);
     }
+  }
+
+
+  /** */
+  private unsubescribeAll() {
+    console.log('UserTypingComponent unsubescribeAll: ', this.subscriptions);
+    this.subscriptions.forEach((subscription: any) => {
+      console.log('unsubescribe: ', subscription);
+      subscription.unsubescribe();
+    });
+    this.subscriptions = [];
   }
 
 

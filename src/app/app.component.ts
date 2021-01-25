@@ -12,17 +12,16 @@ import { TranslateService } from '@ngx-translate/core';
 // services
 import { AppConfigProvider } from './services/app-config';
 // import { UserService } from './services/user.service';
-import { CurrentUserService } from './services/current-user/current-user.service';
+// import { CurrentUserService } from './services/current-user/current-user.service';
 import { EventsService } from './services/events-service';
-import { AuthService } from './services/auth.service';
-import { PresenceService } from './services/presence.service';
-import { TypingService } from './services/typing.service';
-import { ChatPresenceHandler} from './services/chat-presence-handler';
+import { AuthService } from './services/abstract/auth.service';
+import { PresenceService } from './services/abstract/presence.service';
+import { TypingService } from './services/abstract/typing.service';
+// import { ChatPresenceHandler} from './services/chat-presence-handler';
 import { NavProxyService } from './services/nav-proxy.service';
-import { MessagingService } from './services/messaging-service';
 import { ChatManager } from './services/chat-manager';
 // import { ChatConversationsHandler } from './services/chat-conversations-handler';
-import { ConversationsHandlerService } from './services/conversations-handler.service';
+import { ConversationsHandlerService } from './services/abstract/conversations-handler.service';
 import { CustomTranslateService } from './services/custom-translate.service';
 
 // pages
@@ -30,8 +29,8 @@ import { LoginPage } from './pages/authentication/login/login.page';
 import { ConversationListPage } from './pages/conversations-list/conversations-list.page';
 
 // utils
-import { presentModal, closeModal, createExternalSidebar, checkPlatformIsMobile } from './utils/utils';
-import { PLATFORM_MOBILE, PLATFORM_DESKTOP } from './utils/constants';
+import { createExternalSidebar, checkPlatformIsMobile } from './utils/utils';
+import { PLATFORM_MOBILE, PLATFORM_DESKTOP, CHAT_ENGINE_FIREBASE, AUTH_STATE_OFFLINE } from './utils/constants';
 import { environment } from '../environments/environment';
 import { UserModel } from './models/user';
 
@@ -53,13 +52,13 @@ export class AppComponent implements OnInit {
   private doitResize: any;
   private timeModalLogin: any;
   public tenant: string;
+  public authModal: any;
 
   constructor(
     private platform: Platform,
     private splashScreen: SplashScreen,
     private statusBar: StatusBar,
     private appConfigProvider: AppConfigProvider,
-    private msgService: MessagingService,
     private events: EventsService,
     public config: Config,
     public chatManager: ChatManager,
@@ -67,7 +66,7 @@ export class AppComponent implements OnInit {
     public alertController: AlertController,
     public navCtrl: NavController,
     // public userService: UserService,
-    public currentUserService: CurrentUserService,
+    // public currentUserService: CurrentUserService,
     public modalController: ModalController,
     public authService: AuthService,
     public presenceService: PresenceService,
@@ -75,7 +74,7 @@ export class AppComponent implements OnInit {
     private route: ActivatedRoute,
     private renderer: Renderer2,
     private navService: NavProxyService,
-    public chatPresenceHandler: ChatPresenceHandler,
+    // public chatPresenceHandler: ChatPresenceHandler,
     public typingService: TypingService,
     // public chatConversationsHandler: ChatConversationsHandler,
     public conversationsHandlerService: ConversationsHandlerService,
@@ -85,20 +84,9 @@ export class AppComponent implements OnInit {
     console.log('environment  -----> ', environment);
     this.tenant = environment.tenant;
     this.splashScreen.show();
-    this.initFirebase();
-    this.initializeApp();
-    this.initSubscriptions();
-
-    const that = this;
-    this.authService.authStateChanged.subscribe((data: any) => {
-        console.log('***** authStateChanged *****', data);
-        that.splashScreen.hide();
-        if (data && data.uid) {
-          that.goOnLine(data);
-        } else {
-          that.goOffLine();
-        }
-    });
+    if (environment.chatEngine === CHAT_ENGINE_FIREBASE) {
+      this.initFirebase();
+    }
 
   }
 
@@ -108,16 +96,32 @@ export class AppComponent implements OnInit {
    */
   ngOnInit() {
     console.log('ngOnInit -->', this.route.snapshot.params);
-    this.route.queryParams.subscribe(params => {
-      console.log('queryParams -->', params );
-      if (params['tiledeskToken']) {
-        const tiledeskToken = params['tiledeskToken'];
-        localStorage.setItem('tiledeskToken', tiledeskToken);
-      }
+    this.initializeApp();
+  }
+
+
+  /** */
+  initializeApp() {
+    this.notificationsEnabled = true;
+    this.zone = new NgZone({}); // a cosa serve?
+    this.platform.ready().then(() => {
+      this.setLanguage();
+      this.splashScreen.hide();
+      this.statusBar.styleDefault();
+      this.navService.init(this.sidebarNav, this.detailNav);
+      this.authService.initialize();
+      // this.currentUserService.initialize();
+      this.chatManager.initialize();
+      this.presenceService.initialize();
+      this.typingService.initialize();
+      this.initSubscriptions();
+      console.log('initializeApp:: ', this.sidebarNav, this.detailNav);
     });
   }
 
-  /** */
+  /**
+   * initFirebase
+   */
   initFirebase() {
     console.log('initFirebase', this.appConfigProvider.getConfig());
     if (!this.appConfigProvider.getConfig().firebaseConfig || this.appConfigProvider.getConfig().firebaseConfig.apiKey === 'CHANGEIT') {
@@ -125,26 +129,6 @@ export class AppComponent implements OnInit {
       throw new Error('firebase config is not defined. Please create your firebase-config.json. See the Chat21-Web_widget Installation Page');
     }
     firebase.initializeApp(this.appConfigProvider.getConfig().firebaseConfig);
-  }
-
-  /** */
-  initializeApp() {
-    console.log('initializeApp');
-    this.notificationsEnabled = true;
-    this.zone = new NgZone({});
-    this.platform.ready().then(() => {
-      this.setLanguage();
-      this.statusBar.styleDefault();
-
-      // init
-      this.authService.initialize(this.tenant);
-      this.msgService.initialize();
-      // this.userService.initialize(this.tenant);
-      this.presenceService.initialize(this.tenant);
-      this.typingService.initialize(this.tenant);
-      this.navService.init(this.sidebarNav, this.detailNav);
-      this.chatManager.initialize();
-    });
   }
 
   /**
@@ -155,22 +139,22 @@ export class AppComponent implements OnInit {
    * e mi sottoscrivo al nodo conversazioni in conversationHandler e chatArchivedConversationsHandler (connect)
    * salvo conversationHandler in chatManager
    */
-  initConversationsHandler(tenant: string, userId: string) {
-    const keys = [
-      'LABEL_TU'
-    ];
-    const translationMap = this.translateService.translateLanguage(keys);
+  // initConversationsHandler(userId: string) {
+  //   const keys = [
+  //     'LABEL_TU'
+  //   ];
+  //   const translationMap = this.translateService.translateLanguage(keys);
 
-    console.log('initConversationsHandler ------------->', tenant, userId);
-    // 1 - init chatConversationsHandler and  archviedConversationsHandler
-    this.conversationsHandlerService.initialize(tenant, userId, translationMap);
-    // 2 - get conversations from storage
-    // this.chatConversationsHandler.getConversationsFromStorage();
-    // 5 - connect conversationHandler and archviedConversationsHandler to firebase event (add, change, remove)
-    this.conversationsHandlerService.connect();
-    // 6 - save conversationHandler in chatManager
-    this.chatManager.setConversationsHandler(this.conversationsHandlerService);
-  }
+  //   console.log('initConversationsHandler ------------->', userId);
+  //   // 1 - init chatConversationsHandler and  archviedConversationsHandler
+  //   this.conversationsHandlerService.initialize(userId, translationMap);
+  //   // 2 - get conversations from storage
+  //   // this.chatConversationsHandler.getConversationsFromStorage();
+  //   // 5 - connect conversationHandler and archviedConversationsHandler to firebase event (add, change, remove)
+  //   this.conversationsHandlerService.connect();
+  //   // 6 - save conversationHandler in chatManager
+  //   this.chatManager.setConversationsHandler(this.conversationsHandlerService);
+  // }
 
   /** */
   setLanguage() {
@@ -208,18 +192,17 @@ export class AppComponent implements OnInit {
     if (checkPlatformIsMobile()) {
       this.platformIs = PLATFORM_MOBILE;
       console.log('PLATFORM_MOBILE2 navigateByUrl', PLATFORM_MOBILE);
-      this.router.navigateByUrl(pageUrl);
+      // this.router.navigateByUrl(pageUrl);
       // this.navService.setRoot(ConversationListPage, {});
     } else {
-      console.log('PLATFORM_DESKTOP', this.navService, pageUrl);
+      console.log('PLATFORM_DESKTOP ', this.navService, pageUrl);
       this.platformIs = PLATFORM_DESKTOP;
       this.navService.setRoot(ConversationListPage, {});
-
       console.log('checkPlatform navigateByUrl', pageUrl);
-      this.router.navigateByUrl(pageUrl);
+      // this.router.navigateByUrl(pageUrl);
 
-      const DASHBOARD_URL = this.appConfigProvider.getConfig().DASHBOARD_URL;
-      createExternalSidebar(this.renderer, DASHBOARD_URL);
+      // const DASHBOARD_URL = this.appConfigProvider.getConfig().DASHBOARD_URL;
+      // createExternalSidebar(this.renderer, DASHBOARD_URL);
     }
   }
 
@@ -251,6 +234,35 @@ export class AppComponent implements OnInit {
   // BEGIN SUBSCRIPTIONS //
   /** */
   initSubscriptions() {
+    const that = this;
+
+    this.authService.BSAuthStateChanged.subscribe((data: any) => {
+        console.log('***** BSAuthStateChanged *****', data);
+        if (data && data.uid) {
+          that.goOnLine(data);
+        } else if (data === AUTH_STATE_OFFLINE) {
+          that.goOffLine();
+        } else {
+          // sono nel primo caso null
+        }
+    });
+
+    this.authService.BSSignOut.subscribe((data: any) => {
+      console.log('***** BSSignOut *****', data);
+      if (data) {
+        that.presenceService.removePresence();
+      }
+    });
+
+
+    // this.currentUserService.BScurrentUser.subscribe((currentUser: any) => {
+    //   console.log('***** app comp BScurrentUser *****', currentUser);
+    //   if (currentUser) {
+    //     that.chatManager.setCurrentUser(currentUser);
+    //   }
+    // });
+
+
     // this.events.subscribe('go-off-line', this.goOffLine);
     // this.events.subscribe('go-on-line', this.goOnLine);
     // this.events.subscribe('sign-in', this.signIn);
@@ -272,77 +284,96 @@ export class AppComponent implements OnInit {
    */
   subscribeChangedConversationSelected = (user: UserModel, type: string) => {
     console.log('************** subscribeUidConvSelectedChanged navigateByUrl', user, type);
-    this.router.navigateByUrl('conversation-detail/' + user.uid + '?conversationWithFullname=' + user.fullname);
+    // this.router.navigateByUrl('conversation-detail/' + user.uid + '?conversationWithFullname=' + user.fullname);
+    this.router.navigateByUrl('conversation-detail/' + user.uid + '/' + user.fullname);
+  }
+
+
+
+  private async presentModal(): Promise<any> {
+    console.log('presentModal');
+    const attributes = { tenant: 'tilechat', enableBackdropDismiss: false };
+    const modal: HTMLIonModalElement =
+       await this.modalController.create({
+          component: LoginPage,
+          componentProps: attributes,
+          swipeToClose: false,
+          backdropDismiss: false
+    });
+    modal.onDidDismiss().then((detail: any) => {
+      console.log('The result: CHIUDI!!!!!', detail.data);
+      // this.checkPlatform();
+      if (detail !== null) {
+       //  console.log('The result: CHIUDI!!!!!', detail.data);
+      }
+   });
+    // await modal.present();
+    // modal.onDidDismiss().then((detail: any) => {
+    //    console.log('The result: CHIUDI!!!!!', detail.data);
+    //   //  this.checkPlatform();
+    //    if (detail !== null) {
+    //     //  console.log('The result: CHIUDI!!!!!', detail.data);
+    //    }
+    // });
+    return await modal.present();
+  }
+
+  private async closeModal() {
+    console.log('closeModal', this.modalController);
+    await this.modalController.getTop();
+    this.modalController.dismiss({ confirmed: true });
   }
 
   /**
-   * ::: subscribeLoggedUserLogin :::
-   * effettuato il login:
-   * dismetto modale
+   * goOnLine:
+   * 1 - nascondo splashscreen
+   * 2 - recupero il tiledeskToken e lo salvo in chat manager
+   * 3 - carico in d
+   * @param user
    */
-  // subscribeLoggedUserLogin = (user: any) => {
-  //   console.log('1 ************** subscribeLoggedUserLogin', user);
-  //   try {
-  //     closeModal(this.modalController);
-  //   } catch (err) {
-  //     console.error('-> error:', err);
-  //   }
-  //   this.checkPlatform();
-  // }
-
-  /**
-   * ::: subscribeLoggedUserLogout :::
-   * effettuato il logout:
-   * mostro modale login
-   */
-  // subscribeLoggedUserLogout = () => {
-  //   console.log('************** subscribeLoggedUserLogout');
-  //   presentModal(this.modalController, LoginPage, { tenant: 'tilechat', enableBackdropDismiss: false });
-  //   // presentModal(this.modalController, LoginModal, { tenant: 'tilechat', enableBackdropDismiss: false });
-  // }
-
+  goOnLine = (user: any) => {
+    clearTimeout(this.timeModalLogin);
+    console.log('************** goOnLine', user);
+    const tiledeskToken = this.authService.getTiledeskToken();
+    const currentUser = this.authService.getCurrentUser();
+    this.chatManager.setTiledeskToken(tiledeskToken);
+    this.chatManager.setCurrentUser(currentUser);
+    this.presenceService.setPresence(user.uid);
+    this.checkPlatform();
+    try {
+      console.log('************** closeModal', this.authModal);
+      if (this.authModal) {
+        this.closeModal();
+      }
+    } catch (err) {
+      console.error('-> error:', err);
+    }
+    this.chatManager.startApp();
+  }
 
   /**
    *
    */
   goOffLine = () => {
-    console.log('************** goOffLine');
+    console.log('************** goOffLine:', this.authModal);
+    this.chatManager.setTiledeskToken(null);
+    this.chatManager.setCurrentUser(null);
     this.chatManager.goOffLine();
+
+    const that = this;
     clearTimeout(this.timeModalLogin);
     this.timeModalLogin = setTimeout( () => {
-      presentModal(this.modalController, LoginPage, { tenant: 'tilechat', enableBackdropDismiss: false });
+      this.authModal = this.presentModal();
     }, 1000);
   }
 
-  /**
-   *
-   * @param user
-   */
-  goOnLine = (user: any) => {
-    console.log('************** goOnLine', user);
-    const tiledeskToken = this.authService.getTiledeskToken();
-    this.currentUserService.initialize(tiledeskToken);
-
-    clearTimeout(this.timeModalLogin);
-    this.chatManager.goOnLine(user);
-    this.chatPresenceHandler.setupMyPresence(user.uid);
-    this.initConversationsHandler(this.tenant, user.uid);
-    try {
-      console.log('************** closeModal', this.modalController);
-      closeModal(this.modalController);
-      this.checkPlatform();
-    } catch (err) {
-      console.error('-> error:', err);
-    }
-  }
-
   /** */
-  signIn = (user: any, error: any) => {
-    console.log('************** signIn:: user:' + user + '  - error: ' + error);
-    if (error) {
-      localStorage.removeItem('tiledeskToken');
-    }
-  }
+  // signIn = (user: any, error: any) => {
+  //   console.log('************** signIn:: user:' + user + '  - error: ' + error);
+  //   if (error) {
+  //     localStorage.removeItem('tiledeskToken');
+  //   }
+  // }
 
 
 
@@ -350,15 +381,15 @@ export class AppComponent implements OnInit {
   /**
    *
    */
-  firebaseSignInWithCustomToken = (response: any, error) => {
-    console.log('************** firebaseSignInWithCustomToken: ' + response + ' error: ' + error);
-    try {
-      closeModal(this.modalController);
-      this.checkPlatform();
-    } catch (err) {
-      console.error('-> error:', err);
-    }
-  }
+  // firebaseSignInWithCustomToken = (response: any, error) => {
+  //   console.log('************** firebaseSignInWithCustomToken: ' + response + ' error: ' + error);
+  //   try {
+  //     closeModal(this.modalController);
+  //     this.checkPlatform();
+  //   } catch (err) {
+  //     console.error('-> error:', err);
+  //   }
+  // }
 
 
   // END SUBSCRIPTIONS //

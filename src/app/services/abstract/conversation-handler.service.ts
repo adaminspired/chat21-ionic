@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 
 // models
-import { MessageModel } from '../models/message';
+import { MessageModel } from '../../models/message';
 import { UserModel } from 'src/app/models/user';
 
 @Injectable({
@@ -19,6 +19,9 @@ export abstract class ConversationHandlerService {
   // params
   abstract attributes: any;
   abstract messages: Array<MessageModel> = [];
+  abstract conversationWith: string;
+
+  constructor() {}
 
   // functions
   abstract initialize(
@@ -29,7 +32,7 @@ export abstract class ConversationHandlerService {
     type: string,
     metadata: string,
     conversationWith: string,
-    conversationWithDetailFullname: string,
+    conversationWithFullname: string,
     sender: string,
     senderFullname: string,
     channelType: string

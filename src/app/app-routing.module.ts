@@ -16,6 +16,9 @@ const routes: Routes = [
   { path: 'conversation-detail/:IDConv',
     loadChildren: './pages/conversation-detail/conversation-detail.module#ConversationDetailPageModule'
   },
+  { path: 'conversation-detail/:IDConv/:FullNameConv',
+    loadChildren: './pages/conversation-detail/conversation-detail.module#ConversationDetailPageModule'
+  },
   {
     path: 'conversation-detail',
     loadChildren: './pages/conversation-detail/conversation-detail.module#ConversationDetailPageModule'
@@ -31,12 +34,17 @@ const routes: Routes = [
   //   loadChildren: () => import('./pages/details/details.module').then( m => m.DetailsPageModule),
   //   // loadChildren: './pages/details/details.module',
   // },
-  {
-    path: 'detail',
-    loadChildren: './pages/details/details.module#DetailsPageModule'
-    // loadChildren: () => import('./pages/details/details.module').then( m => m.DetailsPageModule),
-    // loadChildren: './pages/details/details.module',
-  },
+  // {
+  //   path: 'detail/:IDConv/:FullNameConv',
+  //   loadChildren: () => import('./pages/details/details.module').then( m => m.DetailsPageModule),
+  //   // loadChildren: './pages/details/details.module',
+  // },
+  // {
+  //   path: 'detail',
+  //   loadChildren: './pages/details/details.module#DetailsPageModule'
+  //   // loadChildren: () => import('./pages/details/details.module').then( m => m.DetailsPageModule),
+  //   // loadChildren: './pages/details/details.module',
+  // },
   {
     path: 'contacts-directory',
     loadChildren: () => import('./pages/contacts-directory/contacts-directory.module').then( m => m.ContactsDirectoryPageModule)
@@ -48,6 +56,10 @@ const routes: Routes = [
   {
     path: 'profile-info',
     loadChildren: () => import('./pages/profile-info/profile-info.module').then( m => m.ProfileInfoPageModule)
+  },
+  {
+    path: 'loader-preview',
+    loadChildren: () => import('./pages/loader-preview/loader-preview.module').then( m => m.LoaderPreviewPageModule)
   },
 
 
